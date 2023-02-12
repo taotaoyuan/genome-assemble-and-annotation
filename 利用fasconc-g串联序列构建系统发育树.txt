@@ -1,0 +1,125 @@
+## 利用fasconcat串联单拷贝序列构建系统发育树
+##infer orthogroups
+mkdir 12-orthofinder && cd 12-orthofinder/
+
+(proteins-raw中的文件名不要出现-空格甚至长文件名)
+#simplify the sequence name
+ls proteins-raw/ | sed "s/.fa$//g" > species.list
+ for species in $(cat /home/lx_sky6/yt/12_orthofinder/species.list);
+  do
+    cat /home/lx_sky6/yt/12_orthofinder/proteins-raw/$species.fa | seqkit seq -n | awk '{print $1}' | sed "s/^/$species-/g" > t1
+    cat /home/lx_sky6/yt/12_orthofinder/proteins-raw/$species.fa | seqkit seq -s -w 0 > t2
+    paste t1 t2 | seqkit tab2fx | seqkit seq -w 0 > $species.fa
+    rm t1 t2
+  done
+
+
+# remove the redundant proteins sequences
+mkdir proteins
+for species in $(cat /home/lx_sky6/yt/12_orthofinder/species.list); do cd-hit -i /home/lx_sky6/yt/12_orthofinder/$species.fa -o /home/lx_sky6/yt/12_orthofinder/proteins/$species.fa -c 0.99 -n 5 -M 280000 -d 0 -T 60; done
+
+#删除蛋白序列中的*和空格
+ sed -i "s/*//g" /home/lx_sky6/yt/12_orthofinder/proteins/*fa && sed -i "s/ //g" /home/lx_sky6/yt/12_orthofinder/proteins/*fa
+
+ rm *fa /home/lx_sky6/yt/12_orthofinder/proteins/*clstr
+ 
+ # 利用orthfinder寻找单拷贝基因
+ orthofinder -f /home/lx_sky6/yt/12_orthofinder/proteins -t 30 -a 30 -S diamond -og
+ mv proteins/OrthoFinder/Results* ./ && rm -rf proteins/OrthoFinder
+ 
+ #extract 166 single copy orthologs
+ mkdir tree && cd tree
+ ls ../Results_Aug12/Single_Copy_Orthologue_Sequences/ |cut -d '/' -f 3|sed 's/.fa//g' >loci.list
+ cd tree/0-raw/
+ for loci in $(cat /home/lx_sky6/yt/12_orthofinder/tree/loci.list)
+  do
+    cat /home/lx_sky6/yt/12_orthofinder/Results*/Single_Copy_Orthologue_Sequences/$loci.fa | seqkit seq -n | cut -d "-" -f 1 > t1
+    cat /home/lx_sky6/yt/12_orthofinder/Results*/Single_Copy_Orthologue_Sequences/$loci.fa | seqkit seq -s -w 0 > t2
+    paste t1 t2 | seqkit tab2fx > $loci.fa
+    rm t1 t2
+  done
+  
+#phylogenetic tree
+cd tree/
+mkdir 1-mafft 2-trim 3-symtest 4-ML
+
+#align the sequences(一定要加参数--auto,不然相似的名字会被截短，例如C.zeaeLN和C.zeaeSCOH1都会变成C.zeae)
+for gene in $(sed -n '1,300p' loci.list); do linsi --auto --thread 5  0-raw/$gene.fa > 1-mafft/$gene.mafft.fa; done  ##打印loci文件的1到300行，只多不少。 
+(The default gap scoring scheme has been changed in version 7.110 (2013 Oct).
+It tends to insert more gaps into gap-rich regions than previous versions.
+To disable this change, add the --leavegappyregion option)
+ 
+ #trim the alignments
+#修剪序列软件（/home/lx_sky6/yt/soft/BMGE/bmge/BMGE-1.12/BMGE.jar）
+for gene in $(cat /home/lx_sky6/yt/12_orthofinder/tree/loci.list); do java -jar  /home/lx_sky6/yt/soft/BMGE/bmge/BMGE-1.12/BMGE.jar -i /home/lx_sky6/yt/12_orthofinder/tree/1-mafft/$gene.mafft.fa -t AA -of $gene.fas >> /home/lx_sky6/yt/12_orthofinder/tree/log.trim; done
+ # 串联单拷贝序列矩阵(不支持集群多线程)
+  perl /home/lx_sky6/software/FASconCAT-G/FASconCAT-G_v1.05.1.pl -s -l
+ ##################
+ SEQUENCE Concatenation Process:
+	Concatenated Supermatrix FILE Printed As FcC_supermatrix.fas
+	Lacking gene sequences filled with missing characters (N|X)
+
+	Partition File Print OUT:
+	RAxML Partition File Printed As FcC_supermatrix_partition.txt
+
+	FILE INFO Print OUT:
+	Extensive SEQUENCE Info Of Supermatrix Printed To FcC_info.xls
+	Extensive SEQUENCE Info Of INFILES Printed To FcC_info.xls
+
+			***  time used: 25.55 sec  ***
+
+	------------------------------------------------------------
+	#### FASconCAT Log Off ! ####
+ 
+ ##############
+ 
+ #symtest (IQTREE) to exclude partitions that violate models (i.e. that may have evolved under non-SRH conditions) prior to tree reconstruction 
+ cd 3-symtest
+mv ../2-trim/FcC* ./
+iqtree -s /home/lx_sky6/yt/12_orthofinder/tree/3-symtest/FcC_supermatrix.fas -p /home/lx_sky6/yt/12_orthofinder/tree/3-symtest/FcC_supermatrix_partition.txt --symtest-remove-bad --symtest-pval 0.05 #stop the computation once the symtest finished, p-value can be 0.01-0.1
+cat FcC_supermatrix_partition.txt.bad.nex | grep "charset" | cut -d " " -f 4 | sed "s/.aa//g" > symtest.loci.list
+#4 loci were removed and 162 were left
+rm *gz
+
+#reconstruct the partitioned ML tree
+cd 4-ML/loci
+for loci in $(cat /home/lx_sky6/yt/12_orthofinder/tree/3-symtest/symtest.loci.list); do cp /home/lx_sky6/yt/12_orthofinder/tree/2-trim/$loci.fas /home/lx_sky6/yt/12_orthofinder/tree/4-ML/loci; done
+ perl perl /home/lx_sky6/software/FASconCAT-G/FASconCAT-G_v1.05.1.pl -s -l
+
+mv FcC* ../ && cd ..
+#reroot the outgroup as the first taxon in the fas file
+    echo "Tachypleus_tridentatus" > list
+    cat *fas | seqkit grep -f list | seqkit seq -u -w 0 > outgroup.fa
+    cat *fas | seqkit grep -v -f list | seqkit seq -u -w 0 > ingroup.fa
+    cat outgroup.fa ingroup.fa > FcC_supermatrix.fas
+    rm ingroup* outgroup* list
+iqtree -s /home/lx_sky6/yt/12_orthofinder/tree/4-ML/FcC_supermatrix.fas -p /home/lx_sky6/yt/12_orthofinder/tree/4-ML/FcC_supermatrix_partition.txt -m MFP --mset LG --msub nuclear --rclusterf 10 -B 1000 --alrt 1000 -T 30
+
+
+ 
+ ##extract number of orthogroups used for bar figures
+ cd Results*/statistics
+ #the universal orthogroups present in all species
+ cat ../Orthogroups/Orthogroups.GeneCount.tsv | tail -n +2 | grep -v "        0       " | cut -f 1 > universal_orthogroups.list(tail -n +2:从 正数第二行到最后)
+ #universal single-copy orthogroups/genes
+ ls ../Single_Copy_Orthologue_Sequences/*|cut -d '/' -f 3|sed 's/.fa//g' >single-copy.list
+ for num in $(seq 11); do echo '236' >> 1-single-copy; done
+ #universal multi-copy orthogroups
+ cat universal_orthogroups.list | grep -v -f single-copy.list > multi-copy.list
+#multi-copy genes/orthologs for each species
+for family in $(cat /home/lx_sky6/yt/12_orthofinder/Results_Aug12/statistics/multi-copy.list); do cat /home/lx_sky6/yt/12_orthofinder/Results_Aug12/Orthogroup_Sequences/$family.fa >> /home/lx_sky6/yt/12_orthofinder/Results_Aug12/statistics/temp; done
+
+for species in $(cat /home/lx_sky6/yt/12_orthofinder/species.list); do grep -c "$species" /home/lx_sky6/yt/12_orthofinder/Results_Aug12/statistics/temp >> /home/lx_sky6/yt/12_orthofinder/Results_Aug12/statistics/2-multi-copy; done (grep -c :返回字符串的个数)
+ 
+ #Number of genes in species-specific orthogroups
+ cat ../Comparative_Genomics_Statistics/Statistics_PerSpecies.tsv |sed -n '10p'|sed 's/Number of genes in species-specific orthogroups\t//g'|sed 's/\t/\n/g'|col -b >4-species-specific (sed -n '10p':显示第10行)
+ #number of genes in the remaining orthogroups
+  cat ../Comparative_Genomics_Statistics/Statistics_PerSpecies.tsv | sed -n '3p' | sed "s/Number of genes in orthogroups\t//g" | sed "s/\t/\n/g" | col -b > num1
+  paste 1-single-copy 2-multi-copy 4-species-specific |sed "s/\t/\+/g"|bc >num2
+  paste num1 num2 | sed "s/\t/-/g" | bc > 5-remaining
+ 
+ 
+ #Number of unassigned genes
+cat ../Comparative_Genomics_Statistics/Statistics_PerSpecies.tsv | sed -n '4p' | sed 's/Number of unassigned genes\t//g' | sed "s/\t/\n/g" | col -b > 6-unassigned_genes
+ 
+ 

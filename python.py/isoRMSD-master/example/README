@@ -1,0 +1,8 @@
+# Hydrogen in mol2.pdb will be ignored.
+# Usage:
+
+python ../isoRMSD.py mol1.pdb mol2.pdb rmsd.txt
+
+# Output:
+# > Best_RMSD: 0.666
+# > Best_Not_Fit_RMSD: 1.703

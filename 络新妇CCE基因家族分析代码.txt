@@ -1,0 +1,91 @@
+#络新妇基因家族分析  CCE
+参考了文章里边的基因家族序列，下载以后作为基因组参考
+
+#erect query and target DB
+mmseqs createdb genome.fa genomeDB
+mmseqs createdb proteins.fa proteinsDB
+
+
+#erect index file for the targetDB
+mmseqs createindex genomeDB tmp
+mmseqs createindex proteinsDB tmp
+
+cd CCE
+mmseqs createdb Dmel.CCE.fa queryDB
+
+
+cd CCE/AA
+mmseqs search ../queryDB ../../proteinsDB result_AADB tmp -s 7.5 --alignment-mode 3 --num-iterations 4 -e 0.001     #(-e   10     1e-5), -min-seq-id 0.5  
+mmseqs convertalis ../queryDB ../../proteinsDB result_AADB blastp.out --format-mode 2 
+cat blastp.out | awk '{print $2}' | sort | uniq > blastp.AA.list
+cat ../../proteins.fa | seqkit grep -f blastp.AA.list | seqkit seq -w 0 > blastp.AA.fa
+cd-hit -i blastp.AA.fa -o blastp.AA.cdhit95.fa -c 0.95 -n 5 -M 12000 -d 0 -T 8
+
+#check GSTs by HMMER3 search (cutoff E-value = 0.001) using the Pfam database to confirm conserved domains (online or local interproscan)
+interproscan.sh -dp -b blastp.AA.interproscan -f TSV -iprlookup -t p -cpu 15 -i blastp.AA.fa -appl Pfam
+
+#HMMER-Pfam results were further checked by blastp in the nonredundant GenBank protein database.
+cat blastp.AA.interproscan.tsv | grep "Carboxylesterase" | awk '{print $1}' | sort | uniq > hmmer-pfam.list
+cat blastp.AA.fa | seqkit grep -f hmmer-pfam.list | seqkit seq -u -w 0 > hmmer-pfam.fa
+cd-hit -i hmmer-pfam.fa -o hmmer-pfam.cdhit99.fa -c 0.99 -n 5 -M 12000 -T 16
+
+
+#tblatn-like search against genomeDB using mmseq2
+cd CCE/genome
+mmseqs search ../queryDB ../../genomeDB result_genomeDB tmp -s 7.5 --alignment-mode 3 --num-iterations 4 -e 10
+mmseqs convertalis ../queryDB ../../genomeDB result_genomeDB tblastn.out --format-output 'query,target,qstart,qend,qlen,tstart,tend,tlen,evalue,alnlen,pident,qaln,taln'
+
+#sort by target, qstart and length using excel or csvtk
+cat tblastn.out | csvtk sort -H -t -k2 -k6:n -k9:n | nl -b a -n rz | sed "s/^/>/g" > tblastn.temp1
+#reduce the multi-hits to the same gene region
+cat tblastn.temp1 | awk '{print $1,$14}' | sed "s/-//g" | sed "s/ /\n/g" > tblastn.temp2.fa
+cd-hit -i tblastn.temp2.fa -o tblastn.temp2.cdhit99.fa -c 0.99 -n 5 -M 12000 -T 8
+cat tblastn.temp2.cdhit99.fa | grep ">" | sed "s/>//g" | sort > tblastn.temp3.list
+for list in $(cat tblastn.temp3.list); do cat tblastn.temp1 | grep ">$list" >> tblastn.temp4;done 
+#delete invalid matches
+#filter the identical regions matching CCE prodicted from annotated proteins 
+mmseqs easy-search tblastn.temp2.cdhit99.fa ../AA/blastp.AA.cdhit95.fa tblastn.blastp.out tmp -s 7.5 --alignment-mode 3 -e 0.001 --format-output 'query,target,qstart,qend,qlen,tstart,tend,tlen,evalue,alnlen,pident,qaln,taln' --min-seq-id 0.9   #0.99 for CSP
+cat tblastn.blastp.out | awk '{print $1}' | sort | uniq > matched.list
+for list in $(cat matched.list); do sed -i "s/>"$list"/>"$list"***/g" tblastn.temp4; done
+
+
+
+
+####手动添加去除里边的序列
+
+
+#compare newly preidicted genes to AA
+mmseqs easy-search unmatched.fa ../AA/blastp.AA.cdhit95.fa unmatched.blastp.out tmp -s 7.5 --alignment-mode 3 -e 0.001 --format-output 'query,target,qstart,qend,qlen,tstart,tend,tlen,evalue,alnlen,pident,qaln,taln'
+cd ..
+cat genome/unmatched.fa AA/hmmer-pfam.cdhit99.fa > ABC.fa 
+#cd-hit -i P450s.fa -o P450s.cdhit95.fa -c 0.95 -n 5 -M 12000 -T 8
+###没找到多余的序列
+
+
+cat AA/hmmer-pfam.cdhit99.fa  | awk '/^>/{print ">Tant_CCE" ++i; next}{print}' | seqkit seq -u -w 0 | seqkit replace -p .+ -r "Tant_CCE{nr}" --nr-width 3 > CCE.Tan.fa
+cat ref.final.fa  | awk '/^>/{print ">Dmel_CCE" ++i; next}{print}' | seqkit seq -u -w 0 | seqkit replace -p .+ -r "Dmel_CCE{nr}" --nr-width 3 > CCE.Dmel.fa
+
+
+for seq in $(cat list)
+do
+  cat ../hmmer-pfam1.fa | seqkit grep -r -p "$seq" > $seq.fasta
+  length=$(cat "$seq".fasta | seqkit stat | tail -n +2 | awk '{print $8}' | sed "s/,//g")
+  a=$length
+  if [ "$length" -gt 249 ]; then cat $seq.fasta | seqkit subseq -r 1:"$length"  > t1.fa; else echo > t1; fi
+  cat t1.fa  > $seq.new.fasta
+  rm -rf t1.fa t1
+done
+
+cat *new.fasta >CCE.fa
+
+
+
+#check their positions on chromosomes
+cd tree
+#cat ../CCEs.fa | sed "s/ protein /_protein_/g" | sed "s/_protein_Name/ /g" > CCEs.fa
+linsi --thread 8 CCE.fa > CCE.mafft.fas
+trimal -in CCE.mafft.fas -out CCE.trim.fas -automated1
+iqtree -s CCE.trim.fas -mset LG -bb 1000 -nt AUTO
+
+
+

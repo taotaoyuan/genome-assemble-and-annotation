@@ -1,0 +1,111 @@
+#extract 236 single copy orthologs
+cd tree/
+ls ../Results*/Single_Copy_Orthologue_Sequences/ | cut -d "/" -f 3 | sed "s/.fa//g" > loci.list
+
+cd tree/0-raw/
+for loci in $(cat ../loci.list)
+  do
+    cat ../../Results*/Single_Copy_Orthologue_Sequences/$loci.fa | seqkit seq -n | cut -d "-" -f 1 > t1
+    cat ../../Results*/Single_Copy_Orthologue_Sequences/$loci.fa | seqkit seq -s -w 0 > t2
+    paste t1 t2 | seqkit tab2fx > $loci.fa
+    rm t1 t2
+  done
+
+#phylogenetic tree
+cd tree/
+mkdir 1-mafft 2-trim 3-symtest 4-ML
+#align the sequences
+for gene in $(sed -n '1,300p' loci.list); do linsi --thread 5  0-raw/$gene.fa > 1-mafft/$gene.mafft.fa; done
+
+#trim the alignments
+cd 2-trim
+for gene in $(cat ../loci.list); do java -jar ~/install/BMGE-1.12/BMGE.jar -i ../1-mafft/$gene.mafft.fa -t AA -of $gene.fas >> ../log.trim; done
+perl ~/install/FASconCAT-G/FASconCAT-G*pl -s -l
+
+#symtest (IQTREE) to exclude partitions that violate models (i.e. that may have evolved under non-SRH conditions) prior to tree reconstruction 
+cd 3-symtest
+mv ../2-trim/FcC* ./
+iqtree -s FcC_supermatrix.fas -p FcC_supermatrix_partition.txt --symtest-remove-bad --symtest-pval 0.05 #stop the computation once the symtest finished, p-value can be 0.01-0.1
+cat FcC_supermatrix_partition.txt.bad.nex | grep "charset" | cut -d " " -f 4 | sed "s/.aa//g" > symtest.loci.list
+#27 loci were removed and 209 were left
+rm *gz
+
+#reconstruct the partitioned ML tree
+cd 4-ML/loci
+for loci in $(cat ../../3-symtest/symtest.loci.list); do cp ../../2-trim/$loci.fas ./; done
+perl ~/install/FASconCAT-G/FASconCAT-G*pl -s -l
+mv FcC* ../ && cd ..
+
+#reroot the outgroup as the first taxon in the fas file
+    echo "Tachypleus_tridentatus" > list
+    cat *fas | seqkit grep -f list | seqkit seq -u -w 0 > outgroup.fa
+    cat *fas | seqkit grep -v -f list | seqkit seq -u -w 0 > ingroup.fa
+    cat outgroup.fa ingroup.fa > FcC_supermatrix.fas
+    rm ingroup* outgroup* list
+
+iqtree -s FcC_supermatrix.fas -p FcC_supermatrix_partition.txt -m MFP --mset LG --msub nuclear --rclusterf 10 -B 1000 --alrt 1000 -T AUTO
+
+#estimate divergence time using mcmctree
+cd 5-mcmctree
+#reroot the tree using the outgroup
+#transform sequence format into PAML-phylip using readal in trimal package
+for loci in $(cat ../3-symtest/symtest.loci.list); do readal -in ../2-trim/$loci.fas -out 0-phylip/$loci.phy -phylip_paml; done
+cat 0-phylip/*phy > input.phy
+#modify the calibration in the tree, check the possible nodes/calibrations errors using FigTree
+#note: The time unit is 100 Million years (Myr)
+#for the large data, use the approximation likelihood calculation instead of "usedata = 1"
+
+#run using "usedata = 3" to construct an approximation to the likelihood function
+cd 1-BV
+mcmctree mcmctree.ctl
+
+#for the protein sequences
+rm out.BV rst*
+cp ~/install/paml-4.9j/dat/lg.dat ./
+for file in tmp*ctl; do sed -i "s/model = 0/model = 2/g" $file; sed -i "s/aaRatefile = /aaRatefile = lg.dat/g" $file; sed -i "s/method = 0/method = 1/g" $file; done
+for file in tmp*ctl; do codeml $file; cat rst2 >> in.BV; done
+
+#re-run using "usedata = 2" to finish the final step
+cd 2-divergence
+mcmctree mcmctree.ctl
+#repeat the run at least twice
+#check the convergence "mcmc.txt" using TRACER
+#final results in FigTree.tre
+
+#estimate divergence using r8s
+cd 5-r8s
+python ~/install/CAFE-4.2.1/scripts/python_scripts/cafetutorial_prep_r8s.py -i input.tre -o r8s_ctl_file.txt -s 75868 -p 'Centruroides_sculpturatus,Dermatophagoides_pteronyssinus,Galendromus_occidentalis,Ixodes_scapularis,Parasteatoda_tepidariorum,Stegodyphus_mimosarum,Tachypleus_tridentatus,Tetranychus_urticae,Trichonephila_antipodiana,Trichonephila_clavipes,Varroa_destructor' -c '541'
+
+#modify the ctl file
+r8s -b -f r8s_ctl_file.txt > r8s_tmp.txt
+tail -n 1 r8s_tmp.txt | cut -c 16- > r8s_ultrametric.txt
+
+
+
+#gene family evolution using CAFE4 and 5
+#prepare a binary, rooted, ultrametric tree
+cd 13-cafe
+cp ../12-orthofinder/tree/5-mcmctree/2-divergence/run2/FigTree.tre ./  #revise the tree format and the time scale (X100)
+#prepare gene count data file
+cat ../12-orthofinder/Results*/Orthogroups/Orthogroups.GeneCount.tsv | sed "s/^/\t/g" | sed "1s/\tOrthogroup/Description\tID/" | cut -d " " -f 1-12 > data.txt
+cafexp -i data.txt -t FigTree.tre -p -k 3 -o gamma
+cafexp -i data.txt -t FigTree.tre -p -o base
+#get the lambda value for CAFE4 analyses
+
+#cafe4
+##no "_" in species name
+cafe
+load -i data.rename.txt -p 0.01 -t 16 -l log.txt -r 1000
+tree (((((Galendromus:146.7892,Varroa:146.7892):221.4606,Ixodes:368.2497):84.4784,(Dermatophagoides:330.0525,Tetranychus:330.0525):122.6757):30.8185,((((Tantipodiana:17.8274,Tclavipes:17.8274):101.7749,Parasteatoda:119.6024):24.6833,Stegodyphus:144.2857):300.3262,Centruroides:444.6119):38.9347):11.1995,Tachypleus:494.7461)
+lambda -s -t (((((1,1)1,1)1,(1,1)1)1,((((1,1)1,1)1,1)1,1)1)1,1) #lambdamu can be used to separate birth and death parameters
+#lambdamu -s -t (((((1,1)1,(((1,1)1,(((((1,1)1,1)1,((1,1)1,1)1)1,1)1,1)1)1,1)1)1,1)1,1)1,1) 
+lambda -l 0.001265590477607
+#lambdamu -l 0.00021776549904 -m 0.00138349331557
+report report.lambda
+
+python /home/zf/install/CAFE-4.2.1/python_scripts/cafetutorial_report_analysis.py -i report.lambda.cafe -o summary_lambda
+python /home/zf/install/CAFE-4.2.1/scripts/python_scripts/cafetutorial_draw_tree.py -i summary_lambda_node.txt -t '(((((Galendromus:146.7892,Varroa:146.7892):221.4606,Ixodes:368.2497):84.4784,(Dermatophagoides:330.0525,Tetranychus:330.0525):122.6757):30.8185,((((Tantipodiana:17.8274,Tclavipes:17.8274):101.7749,Parasteatoda:119.6024):24.6833,Stegodyphus:144.2857):300.3262,Centruroides:444.6119):38.9347):11.1995,Tachypleus:494.7461)' -d '(((((Heliconius<0>,Danaus<2>)<1>,((((((Heliothis<4>,Helicoverpa<6>)<5>,Spodoptera<8>)<7>,Trichoplusia<10>)<9>,Operophtera<12>)<11>,(Bombyx<14>,Manduca<16>)<15>)<13>,(Ostrinia<18>,Amyelois<20>)<19>)<17>)<3>,Plutella<22>)<21>,Stenopsyche<24>)<23>,Drosophila<26>)<25>' -o tree_rapid.pdf -y Rapid
+
+cd expansion
+cat ../cafe4/summary_lambda_fams.txt | grep "Tantipodiana<" | sed "s/,/\n/g" | grep "+" | cut -d "[" -f 1 > expansion.list #revise the first line
+#113 significantly expanded families

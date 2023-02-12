@@ -1,0 +1,38 @@
+#得到同源序列后，将蛋白序列转换成cds序列
+#!/bin/bash
+
+#PBS -N pro2cds
+#PBS -l nodes=1:ppn=32
+#PBS -l walltime=9999:00:00
+#PBS -q high
+
+cd /home/lx_sky6/czyf/rnaseq_fmj/workspace2/orthofinder/fmj/pro/pro2cds
+
+pro=./pro_seq_after
+cds=./cds #一定要注意脚本中cds的文件类型为.fna，否则会报错
+script=/home/lx_sky6/czyf/rnaseq_fmj/software/singlePep2CDS.py
+
+
+python2 $script $cds $pro
+
+#换名，保证cds序列名与树文件物种名一致
+#正选择
+#!/bin/bash
+
+#PBS -N selection
+#PBS -l nodes=1:ppn=32
+#PBS -l walltime=9999:00:00
+#PBS -q high
+
+cd /home/lx_sky6/czyf/rnaseq_fmj/workspace2/selection
+
+export PATH=/home/lx_sky6/software/miniconda3/bin/:$PATH
+
+pamlpip=/home/lx_sky6/czyf/rnaseq_fmj/software/paml_2.3.pl
+cds=/home/lx_sky6/czyf/rnaseq_fmj/workspace2/selection/orthologue
+tree=/home/lx_sky6/czyf/rnaseq_fmj/workspace2/selection/tree_unrooted.txt #这里的树文件最好使用无根树
+
+perl $pamlpip -i=$cds -t=$tree -m=ModelAbranchSite -m=NullModelAbranchSite
+
+#得到正选择结果
+nohup ~/czyf/rna_fmj/software/branch_site_steve1.py ./run_paml ./prank &

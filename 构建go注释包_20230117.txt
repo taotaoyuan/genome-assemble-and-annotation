@@ -1,0 +1,63 @@
+library(tidyverse)
+
+
+
+eggnogmapper<- read_delim(file = 'Sg.for.annotations',"\t",escape_double =FALSE,col_names=FALSE,comment = "#",trim_ws = TRUE) %>%dplyr::select(GID=X1,
+                SYMBOL=X9,
+                GO=X10,
+                KO=X12,
+                Pathway=X13,
+                OG=X7,
+                Gene_Name=X21) 
+
+gene_info <- dplyr::select(eggnogmapper,  GID, Gene_Name) %>%dplyr::filter(!is.na(Gene_Name))
+gene2go <- dplyr::select(eggnogmapper, GID, GO) %>%
+  separate_rows(GO, sep = ',', convert = F) %>%
+  filter(!is.na(GO)) %>%
+  mutate(EVIDENCE = 'IEA')
+gene2go <- subset(gene2go,grepl("^.*GO.*$",GO))
+write.table(gene2go,file = '/home/lx_sky6/yt/0117_xianyu/gebe2go',sep = '\t',quote = FALSE)
+
+AnnotationForge::makeOrgPackage(gene_info=gene_info,
+                                go=gene2go,
+                                maintainer='yuantao <909474045@qq.com>',
+                                author='yuantao',
+                                outputDir="/home/lx_sky6/yt/0117_xianyu",
+                                tax_id=162130,
+                                genus='Sclerospora',                     #只改动这里
+                                species='graminicola',               #和这里，进行命名
+                                goTable="go",
+                                version="1.0")
+pkgbuild::build('/home/lx_sky6/yt/0117_xianyu/org.Sgraminicola.eg.db',dest_path = "/home/lx_sky6/yt/0117_xianyu/") 
+
+
+
+Si_eggnogmapper<- read_delim(file = 'Si.for.annotations',"\t",escape_double =FALSE,col_names=FALSE,comment = "#",trim_ws = TRUE) %>%dplyr::select(GID=X1,
+                                                                                                                                               SYMBOL=X9,
+                                                                                                                                               GO=X10,
+                                                                                                                                               KO=X12,
+                                                                                                                                               Pathway=X13,
+                                                                                                                                               OG=X7,
+                                                                                                                                               Gene_Name=X21) 
+
+Si_gene_info <- dplyr::select(Si_eggnogmapper,  GID, Gene_Name) %>%dplyr::filter(!is.na(Gene_Name))
+Si_gene2go <- dplyr::select(Si_eggnogmapper, GID, GO) %>%
+  separate_rows(GO, sep = ',', convert = F) %>%
+  filter(!is.na(GO)) %>%
+  mutate(EVIDENCE = 'IEA')
+Si_gene2go <- subset(Si_gene2go,grepl("^.*GO.*$",GO))
+write.table(Si_gene2go,file = '/home/lx_sky6/yt/0117_xianyu/Sigene2go',sep = '\t',quote = FALSE)
+
+AnnotationForge::makeOrgPackage(gene_info=Si_gene_info,
+                                go=Si_gene2go,
+                                maintainer='yuantao <909474045@qq.com>',
+                                author='yuantao',
+                                outputDir="/home/lx_sky6/yt/0117_xianyu",
+                                tax_id=4555,
+                                genus='Setaria',                     #只改动这里
+                                species='italica',               #和这里，进行命名
+                                goTable="go",
+                                version="1.0")
+
+pkgbuild::build('/home/lx_sky6/yt/0117_xianyu/org.Sitalica.eg.db',dest_path = "/home/lx_sky6/yt/0117_xianyu/") 
+

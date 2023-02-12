@@ -1,0 +1,2 @@
+Best_RMSD: 0.666
+Best_Not_Fit_RMSD: 1.703

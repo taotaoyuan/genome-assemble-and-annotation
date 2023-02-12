@@ -1,0 +1,345 @@
+##1.下载安装
+git clone https://github.com/oushujun/EDTA.git
+##利用conda创建一个EDTA的环境
+conda env create -f EDTA.yml  
+##2.数据处理
+seqtk subseq raw/Arabidopsis_lyrata.v.1.0.dna.toplevel.fa chr.list|seqtk seq -l 60 >Aly.genome.fa
+##-l 60 表示一行60个碱基
+##或者
+seq 1 8 | seqtk subseq raw/Arabidopsis_lyrata.v.1.0.dna.toplevel.fa - |seqtk seq -l 60 >Aly.genome.fa 
+##seq 1 8 表示生成1到8的数字
+##- 表示管道，sebseq的第二个参数丛管道获得
+
+ln -s raw/Arabidopsis_thaliana.TAIR10.53.gtf Ath.genes.gtf
+ln -s raw/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa Ath.genome.fa
+
+grep -v '^scaffold' raw/Arabidopsis_lyrata.v.1.0.53.gtf >Aly.genes.gtf
+
+samtools faidx Aly.genome.fa
+samtools faidx Ath.genome.fa
+##然后转到你创建的conda环境下的RepeatMasker文件夹下，把RepBaseRepeatMaskerEdition-20181026.tar.gz放到该目录下
+##解压
+tar -zxvf RepBaseRepeatMaskerEdition-20181026.tar.gz
+##然后利用自带的脚本把这个包配置到Libraries文件夹下
+./addRepBase.pl -libdir Libraries/
+-------------------------------------------------------------------------------------
+Rebuilding RepeatMaskerLib.h5 master library
+  - Read in 49011 sequences from Libraries//RMRBSeqs.embl
+  - Read in 49011 annotations from Libraries//RMRBMeta.embl
+  Merging Dfam + RepBase into RepeatMaskerLib.h5 library...
+
+Database: Dfam withRBRM
+Version: 3.2
+Date: 2020-07-02
+
+Dfam - A database of transposable element (TE) sequence alignments and HMMs.
+RBRM - RepBase RepeatMasker Edition - version 20181026
+
+Total consensus sequences: 51780
+Total HMMs: 6915
+-------------------------------------------------------------------------------------
+
+
+
+##3.开始注释
+注释之前可以搜索一下数据库中有没有我们研究的物种的注释
+/home/lx_sky6/software/RepeatMasker/RepeatMasker -e rmblast -pa 60 -qq jy_hic.fasta >repeatmasker.log 2>&1
+##-s 速度慢，精确
+##-q 较快
+##-qq 很快
+/home/lx_sky6/software/RepeatMasker/RepeatMasker -e rmblast -pa 20 -qq ./Aly.genome.fa 1>repeatmasker.log 2>&1
+##如果你的物种在数据库中有就加上-species "物种名"，没有的话可以拿近缘种（当然也可以不加任何参数，这当然是不可以的，可以看结果）
+-----------------------------------------------------------------------
+Aly.genome.fa.cat.gz ##记录了和数据库中的那个重复序列比对上了
+Aly.genome.fa.masked ##屏蔽了重复序列后的基因组
+Aly.genome.fa.out  ##记录每个位置注释到的类型
+Aly.genome.fa.tbl  ##统计结果
+*************************************************************
+file name: Aly.genome.fa
+sequences:             8
+total length:  194182311 bp  (173245969 bp excl N/X-runs)
+GC level:         35.98 %
+bases masked:   47070603 bp ( 24.24 %)
+==================================================
+               number of      length   percentage
+               elements*    occupied  of sequence
+--------------------------------------------------
+Retroelements        15864     25680309 bp   13.22 %
+   SINEs:             1245       301344 bp    0.16 %
+   Penelope              0            0 bp    0.00 %
+   LINEs:             4733      3901459 bp    2.01 %
+    CRE/SLACS            0            0 bp    0.00 %
+     L2/CR1/Rex          0            0 bp    0.00 %
+     R1/LOA/Jockey       0            0 bp    0.00 %
+     R2/R4/NeSL          0            0 bp    0.00 %
+     RTE/Bov-B           0            0 bp    0.00 %
+     L1/CIN4          4649      3874723 bp    2.00 %
+   LTR elements:      9886     21477506 bp   11.06 %
+     BEL/Pao             0            0 bp    0.00 %
+     Ty1/Copia        4477      6446864 bp    3.32 %
+     Gypsy/DIRS1      5293     14823941 bp    7.63 %
+       Retroviral        0            0 bp    0.00 %
+DNA transposons      22592     10946651 bp    5.64 %
+   hobo-Activator     4222      1465337 bp    0.75 %
+   Tc1-IS630-Pogo     2783       625579 bp    0.32 %
+   En-Spm                0            0 bp    0.00 %
+   MuDR-IS905            0            0 bp    0.00 %
+   PiggyBac              0            0 bp    0.00 %
+   Tourist/Harbinger  2078       886470 bp    0.46 %
+   Other (Mirage,        0            0 bp    0.00 %
+    P-element, Transib)
+Rolling-circles       9384      6819224 bp    3.51 %
+Unclassified:          742       410010 bp    0.21 %
+Total interspersed repeats:    37036970 bp   19.07 %
+Small RNA:            1652       334666 bp    0.17 %
+Satellites:            401       246296 bp    0.13 %
+Simple repeats:      56564      2228818 bp    1.15 %
+Low complexity:      12940       631774 bp    0.33 %
+************************************************************
+##加-species "Arabidopsis lyrata" 注释到19.07%
+##加-species "Arabidopsis thaliana" 注释到12%
+##不加-species 注释到0.02 %
+##可以看出物种之间的差距，不能用别的物种来注释，而且要是数据库中没有自己的物种就要用另一个软件来注释
+-----------------------------------
+
+##4.RepeatModeler从头预测
+cd RepeatModeler
+ln -s ../21.RepeatMasker/sp_Aly/Aly.genome.fa .
+##构建数据库
+BuildDatabase -name genome Aly.genome.fa
+
+# 运行RepeatModeler
+RepeatModeler -database genome -pa 20 -LTRStruct 1>repeatmodeler.log 2>&1
+##2.0版本的参数-LTRStruct，基于ltr结构注释，这一步会生成enome-families.fa文件，为Repeatmodeler构建的重复序列数据库。在用repeatmasker去跑这个数据库
+# 运行 RepeatMasker
+nohup RepeatMasker -e rmblast -pa 20 -qq -lib ./genome-families.fa Aly.genome.fa 1>repeatmasker.log 2>&1 &
+##-lib 指定repeatmodeler生成的数据库为repeatmasker用的数据库
+##注释结果为Masked: total interspersed repeats:    45421860 bp   23.39 % %% （结果为Repeatmodeler构建的重复序列数据库+RepBase数据库）
+
+##5.EDTA注释
+ln -s ../../12.ref/Aly.genome.fa Aly.genome.fa
+EDTA.pl --genome Aly.genome.fa --species others --sensitive 0 --anno 1 --threads 20
+##--species 不是玉米和水稻就选others 
+##--sensitive 0 决定最后用不用repeatmodeler跑（0:不用，1:用），如果基因组2.3g可能跑半个月
+##-anno 1 最后用不用repeatmasker注释一下基因组（0:不用，1:用）
+## --u  在文件的最后一列可以计算插入时间
+
+----------------------------------------------
+SuperFamily  TE_type     Insertion_Time
+7..203667       0.9965  +       Copia   LTR     134796
+        IN:1095599..1101260     1.0000  -       Copia   LTR     0
+        IN:1198133..1203942     0.9960  -       Copia   LTR     153641 ##15万年前
+        IN:1567505..1573120     1.0000  +       Copia   LTR     0
+        IN:1915544..1920205     1.0000  -       Copia   LTR     0
+        IN:2128285..2130252     1.0000  -       Gypsy   LTR     0
+        IN:2823890..2834650     0.9981  -       Gypsy   LTR     74779
+------------------------------------------- 
+
+##结果文件
+-------------------------------------------------------------
+-rw-rw-r-- 1 lx_sky6 lx_sky6 197418710 9月  21 15:08 Aly.genome.fa.mod
+drwxrwxr-x 2 lx_sky6 lx_sky6      4096 9月  21 16:00 Aly.genome.fa.mod.EDTA.anno ##step4创建
+drwxrwxr-x 2 lx_sky6 lx_sky6     12288 9月  21 15:39 Aly.genome.fa.mod.EDTA.combine  ##step2创建
+drwxrwxr-x 2 lx_sky6 lx_sky6      4096 9月  21 15:48 Aly.genome.fa.mod.EDTA.final  ##step3创建
+-rw-rw-r-- 1 lx_sky6 lx_sky6   2147773 9月  21 15:48 Aly.genome.fa.mod.EDTA.intact.gff3
+drwxrwxr-x 5 lx_sky6 lx_sky6      4096 9月  21 15:24 Aly.genome.fa.mod.EDTA.raw  ##step1创建
+-rw-rw-r-- 1 lx_sky6 lx_sky6  15726714 9月  21 16:00 Aly.genome.fa.mod.EDTA.TEanno.gff3
+-rw-rw-r-- 1 lx_sky6 lx_sky6    175986 9月  21 16:00 Aly.genome.fa.mod.EDTA.TEanno.sum
+-rw-rw-r-- 1 lx_sky6 lx_sky6   5565240 9月  21 15:46 Aly.genome.fa.mod.EDTA.TElib.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6 194182343 9月  21 16:00 Aly.genome.fa.mod.MAKER.masked
+--------------------------------------------------------------
+
+在Aly.genome.fa.mod.EDTA.raw文件夹下
+drwxrwxr-x 2 lx_sky6 lx_sky6     4096 9月  21 15:24 Helitron
+drwxrwxr-x 2 lx_sky6 lx_sky6    12288 9月  21 15:08 LTR 
+drwxrwxr-x 4 lx_sky6 lx_sky6     4096 9月  21 13:28 TIR
+以及过滤后的文件
+-rw-rw-r-- 1 lx_sky6 lx_sky6 17357087 9月  21 15:24 Aly.genome.fa.mod.EDTA.intact.fa  ##为LTR和TIR及Helitron三者合并的fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6  2223758 9月  21 15:24 Aly.genome.fa.mod.EDTA.intact.gff3  ##为LTR和TIR及Helitron三者合并的gff
+-rw-rw-r-- 1 lx_sky6 lx_sky6    59056 9月  21 15:24 Aly.genome.fa.mod.Helitron.intact.bed
+-rw-rw-r-- 1 lx_sky6 lx_sky6  5034481 9月  21 15:24 Aly.genome.fa.mod.Helitron.intact.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6   128957 9月  21 15:24 Aly.genome.fa.mod.Helitron.intact.gff3
+-rw-rw-r-- 1 lx_sky6 lx_sky6  5034481 9月  21 15:24 Aly.genome.fa.mod.Helitron.raw.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6  9764021 9月  21 15:08 Aly.genome.fa.mod.LTR.intact.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6  1740282 9月  21 15:08 Aly.genome.fa.mod.LTR.intact.gff3
+-rw-rw-r-- 1 lx_sky6 lx_sky6  4408971 9月  21 15:08 Aly.genome.fa.mod.LTR.raw.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6   185666 9月  21 15:08 Aly.genome.fa.mod.TIR.intact.bed
+-rw-rw-r-- 1 lx_sky6 lx_sky6  2558585 9月  21 15:08 Aly.genome.fa.mod.TIR.intact.fa
+-rw-rw-r-- 1 lx_sky6 lx_sky6   347761 9月  21 15:08 Aly.genome.fa.mod.TIR.intact.gff3
+-rw-rw-r-- 1 lx_sky6 lx_sky6  2558585 9月  21 15:08 Aly.genome.fa.mod.TIR.raw.fa
+----------------------------------------
+在Aly.genome.fa.mod.EDTA.final  文件夹下有一个Aly.genome.fa.mod.EDTA.TElib.fa文件为最终的TElibrary
+在Aly.genome.fa.mod.EDTA.anno文件夹下为repeatmasker最终的注释结果
+###Aly.genome.fa.mod.EDTA.TEanno.sum文件为注释结果
+Total                  78378        51821434     29.91%
+
+--------------------------------------------------
+EDTA_raw.pl可以直跑ltr_finder及retrive来计算插入时间
+--------------------------------------------------
+
+
+##6.如何提高SINEs的注释
+6.1通过https://sines.eimb.ru/banks/下载已有的SINEs的结果
+前面我们已经获得了repeatmodeler和repeatmasker构建的lib----../22.RepeatModeler/genome-families.fa
+mkdir 11.software
+wget https://sines.eimb.ru/banks/SINEs.bnk
+wget https://sines.eimb.ru/banks/LINEs.bnk
+根据../22.RepeatModeler/genome-families.fa的id格式 修改SINEs.bnk的ID
+
+awk '{print $1}' SINEs.bnk |awk '{if(/>/)print $1"#SINE/"$1}'|less -S
+-----------------------------
+结果
+>5S-Sauria#SINE/>5S-Sauria #之后的代表属于那个分类
+>AC1#SINE/>AC1
+>AcaNinDC#SINE/>AcaNinDC
+awk '{print $1}' SINEs.bnk |awk '{if(/>/)print $1"#SINE/"$1;else print $1}'|less -S
+
+
+##;else print $1:否则打印全部（指的碱基行）
+>5S-Sauria#SINE/>5S-Sauria
+GCCTACGGCCATACCACCCTGAACACGCCCGATCTCGTCTGATCTCGGAAGCTAAGCAGGGTCGGGCCTGGTTAGTACTTGGATGGGAGACCGCCTGGGA
+ATACCGGGTGCTGTAGGCTTTAGCCCCAGCTTCTGCCAACCTAGCAGTTCGAAAACATGCAAATGTGAGTAGATCAATAGGTACCGCTCCGGCGGGAAGG
+TAACGGCGCTCCATGCAGTCATGCCGGCCACATGACCTTGGAGGTGTCTACGGACAACGCCGGCTCTTCGGCTTAGAAATGGAGATGAGCACCAACCCCC
+AGAGTCGGACATGACTGGACTTAATGTCAGGGGAAAACCTTTACCTTT
+----------------------------
+最后再把/>替换为/
+awk '{print $1}' SINEs.bnk |awk '{if(/>/)print $1"#SINE/"$1;else print $1}'|sed 's/\/>/\//g'less -S
+ ---------------------------
+ >5S-Sauria#SINE/5S-Sauria
+GCCTACGGCCATACCACCCTGAACACGCCCGATCTCGTCTGATCTCGGAAGCTAAGCAGGGTCGGGCCTGGTTAGTACTTGGATGGGAGACCGCCTGGGA
+ATACCGGGTGCTGTAGGCTTTAGCCCCAGCTTCTGCCAACCTAGCAGTTCGAAAACATGCAAATGTGAGTAGATCAATAGGTACCGCTCCGGCGGGAAGG
+TAACGGCGCTCCATGCAGTCATGCCGGCCACATGACCTTGGAGGTGTCTACGGACAACGCCGGCTCTTCGGCTTAGAAATGGAGATGAGCACCAACCCCC
+AGAGTCGGACATGACTGGACTTAATGTCAGGGGAAAACCTTTACCTTT
+
+awk '{print $1}' SINEs.bnk |awk '{if(/>/)print $1"#SINE/"$1;else print $1}'|sed 's/\/>/\//g' >SINEs.fa
+
+-----------------------------------------
+同理修改LINEs.bnk
+awk '{print $1}' LINEs.bnk |awk '{if(/>/)print $1"#LINE/"$1;else print $1}'|sed 's/\/>/\//g' >LINEs.fa
+
+合并两个
+cat SINEs.fa LINEs.fa >SINE_LINE.fa
+这个文件就可以在跑EDTA.pl时加上--curatedlib [File]参数，会让结果中SINE和LINE得到很好的注释。
+
+-----------------------------
+EDTA.pl --genome genome.fa --species others --sensitive 0 --anno 1 --threads 20 --curatedlib ../../11.software/SINE_LINE.fa
+------------------------------
+6.2通过repBase构建TE数据库
+
+利用RepeatMasker/util/queryRepeatDatabase.pl脚本把想要的序列从repBase提取出来（可以-species：该物种所有的重复序列,-class等）
+---------------------------------------------------
+例如：
+perl /pub/software/RepeatMasker/util/queryRepeatDatabase.pl -species rosids >RepBase_rosids.fa
+EDTA.pl --genome genome.fa --species others --sensitive 0 --anno 1 --threads 20 --curatedlib RepBase_rosids.fa --step final --overwrite 1
+--------------------------------------------------------
+
+
+##7.DeepTE（基于机器学习）或者TEsorter(基于结构域)进一步对库里的unkonw的LTR分类
+所以完整的LTR用TEsorter分类，不完整的LTR用DeepTE分类。因为TElib中有完整的也有不完整的，所以就用DeepTE去分类。
+7.1安装DeepTE
+conda create -n DeepTE
+conda install tensorflow-gpu=1.14.0 biopython keras=2.2.4 numpy=1.16.0 hmmer
+conda activate DeepTE
+
+7.2对未分类的LTR进行分类
+首先备份
+cp Aly.genome.fa.mod.EDTA.TEanno.sum Aly.genome.fa.mod.EDTA.TEanno.sum.bak
+cp Aly.genome.fa.mod.EDTA.TEanno.gff3 Aly.genome.fa.mod.EDTA.TEanno.gff3.bak
+cp Aly.genome.fa.mod.EDTA.TElib.fa Aly.genome.fa.mod.EDTA.TElib.fa.bak
+ grep 'LTR/unknown' Aly.genome.fa.mod.EDTA.TElib.fa|sed 's/>//g'|seqtk subseq Aly.genome.fa.mod.EDTA.TElib.fa - >LTR_unknown.fa
+grep -v 'LTR/unknown' Aly.genome.fa.mod.EDTA.TElib.fa|sed 's/>//g'|seqtk subseq Aly.genome.fa.mod.EDTA.TElib.fa - >LTR_known.fa
+运行：
+python /home/lx_sky6/yt/soft/DeepTE/DeepTE.py  -i LTR_unknown.fa -sp P -m_dir /home/lx_sky6/yt/database/TEbase/Plants_model -fam LTR 1>DeepTE.log 2>&1
+##-sp P 指定物种为植物(P)
+结果在
+-rw-rw-r-- 1 lx_sky6 lx_sky6    234741 9月  22 21:20 opt_DeepTE.fasta ##加了新分类的fa文件
+-rw-rw-r-- 1 lx_sky6 lx_sky6      6150 9月  22 21:20 opt_DeepTE.txt
+-rw-rw-r-- 1 lx_sky6 lx_sky6    232179 9月  22 21:20 opt_input_CNN_data.txt
+-rw-rw-r-- 1 lx_sky6 lx_sky6       341 9月  22 16:25 step1.run_edta.sh
+-rw-rw-r-- 1 lx_sky6 lx_sky6      1186 9月  22 21:15 step2.run_deepte.sh
+drwxrwxr-x 2 lx_sky6 lx_sky6      4096 9月  22 21:20 store_temp_opt_dir ##里面有对应的分类
+
+对opt_DeepTE.fasta文件的ID修改之后和LTR_known.fa合并就为优化后的TElib
+>TE_00000176_INT#LTR/unknown__ClassI_LTR_Gypsy
+---------------------------------------------------------------------------
+sed 's/LTR\/unknown__ClassI_LTR_Copia/LTR\/Copia/' opt_DeepTE.fasta | sed 's/LTR\/unknown__ClassI_LTR_Gypsy/LTR\/Gypsy/'|sed 's/LTR\/unknown__ClassI_LTR/LTR\/unknown/' >LTR_unknown_DeepTE.fa
+----------------------------------------------------------------------------
+>TE_00000176_INT#LTR/Gypsy
+
+合并：
+cat LTR_known.fa LTR_unknown_DeepTE.fa >Aly.genome.fa.mod.EDTA.TElib.fa
+7.3再次运行EDTA注释
+EDTA.pl --genome Aly.genome.fa --step anno --overwrite 1 --anno 1
+## --step anno 只从第三步anotation进行
+##--anno 1 确定运行anotation
+## --overwrite 1 如果有anno则覆盖掉
+看结果：Aly.genome.fa.mod.EDTA.anno/Aly.genome.fa.mod.EDTA.TEanno.sum；其中LTR只有1.18%为unknown
+Total Sequences: 8
+Total Length: 173245969 bp
+Class                  Count        bpMasked    %masked
+=====                  =====        ========     =======
+LTR                    --           --           --
+    Copia              6425         6777888      3.91%
+    Gypsy              11280        13756626     7.94%
+    unknown            4476         2037627      1.18%
+
+##8.转座子数据统计绘图
+Aly.allTE=import('../../../../TEanalysis/TEAnalysis/23.EDTA/Aly/Aly.genome.fa.mod.EDTA.TEanno.gff3')%>%  
+  as_tibble() ##as_tibble:转换为表格
+
+Ath.allTE=import('../../../../TEanalysis/TEAnalysis/23.EDTA/Ath/genome.fa.mod.EDTA.TEanno.gff3')%>%  
+  as_tibble() ##as_tibble转换为表格
+1.计算基因组大小
+library(readr)
+sum(read_table2("~/yt/TEanalysis/TEAnalysis/12.ref/Aly.genome.fa.fai", 
+    col_names = FALSE)%>%
+  pull(X2)) ##pull就是把第二列抓出来，sum()求和
+-------------
+###group_by(Aly.allTE,Classification) %>%
+  summarise(count= n()) ##按Classification列分类，summarise(count= n())计数
+-----------------------
+Classification<chr>count<int>
+LTR/Copia	9540			
+LTR/Gypsy	14252			
+
+其实这个结果是错的
+---------------------------
+在此之前要对表格过滤
+-------------
+例如，如下只能算一个，统计的时候会算成6个
+repeat_region   1567271 1573354
+target_site_duplication 1567271 1567275
+long_terminal_repeat    1567276 1567504
+Copia_LTR_retrotransposon       1567276 1573349
+long_terminal_repeat    1573121 1573349
+target_site_duplication 1573350 1573354
+
+filter(Aly.allTE,type %in% c('repeat_region','target_site_duplication','long_terminal_repeat')) ##表示过滤，type类型在c()中，%in%:表示在--中
+##在之前加！表示不在--中
+!(filter(Aly.allTE,type %in% c('repeat_region','target_site_duplication','long_terminal_repeat')))
+写成一句
+filter(Aly.allTE,
+                    !(type %in% c("repeat_region",
+                                  "target_site_duplication",
+                                  "long_terminal_repeat"))) %>%
+  group_by(Classification) %>%
+    summarise(
+    count = n(), ##计数
+    mean_size = mean(width), ##计算平均长度
+    total_size=sum(width), ##计算TE的总长
+    percent = total_size/Aly_genomesize ##计算总长占基因组的大小
+    ) 
+-------------------
+LTR/Copia 6700
+LTR/Gypsy 11219
+---------------
+##3.绘图
+3.1TE总长
+library(ggplot2)
+library(ggsci) ##sci的颜色板
+ggplot(data=Aly_allTE.summ,aes(x=Classification,y=total_size))+ ##对x,y轴赋值
+  geom_col(aes(fill=Classification))+ ##对填充色赋值
+  scale_fill_ordinal()+ ##对填充色赋于什么颜色
+  labs(x=NULL,y='total szie',fill=NULL)+ ##x轴的标签去掉，y轴表情改名，fill=NULL图例的分类去掉
+  theme(axis.text.x = element_text(angle = 45,hjust = 1) ##x轴的主题旋转45度，右对齐
+  )

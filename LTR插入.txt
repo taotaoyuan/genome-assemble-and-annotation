@@ -1,0 +1,45 @@
+# 第一步 导入数据
+library(tidyverse)
+library(readr)
+#Atha_fa_pass <- read_table2("~/yyj/genome/LTR/2.result/Atha.fa.pass.list")
+Iyun_fa_pass <- read_table2("~/yyj/genome/LTR/2.result/Iyun.fa.pass.list")
+Smoe_fa_pass <- read_table2("~/yyj/genome/LTR/2.result/Smoe.fa.pass.list")
+Stam_fa_pass <- read_table2("~/yyj/genome/LTR/2.result/Stam.fa.pass.list")
+Itai_fa_pass <- read_table2("~/yyj/genome/LTR/2.result/Itai.fa.pass.list")
+# 第二步，给每个表都添加一列物种名
+Atha_fa_pass <- mutate(Atha_fa_pass,Species="Atha")
+Iyun_fa_pass <- mutate(Iyun_fa_pass,Species="Iyun")
+Smoe_fa_pass <- mutate(Smoe_fa_pass,Species="Smoe")
+Stam_fa_pass <- mutate(Stam_fa_pass,Species="Stam")
+Itai_fa_pass <- mutate(Itai_fa_pass,Species="Itai")
+# 合并表格
+#ltr <- bind_rows(Atha_fa_pass, Iyun_fa_pass, Smoe_fa_pass, Stam_fa_pass)
+ltr <- bind_rows(Iyun_fa_pass, Smoe_fa_pass, Stam_fa_pass, Itai_fa_pass) %>%
+  filter(SuperFamily != 'unknown')
+
+# 第二步 画图 密度图
+library(ggplot2)
+library(ggsci)
+ggplot(data = ltr, aes(x = Insertion_Time)) +
+  geom_density(aes(color = Species, linetype = SuperFamily)) +
+  scale_color_aaas() +
+  scale_x_continuous(
+    name = 'Insertion Time (MYA)',
+    breaks = seq(0, 50000000, 10000000),
+    labels = seq(0,50,10)
+  ) +
+  theme_classic() +
+  theme(legend.position = c(0.9,0.8))
+
+# 直方图
+ggplot(data = ltr, aes(x = Insertion_Time)) +
+  geom_histogram(aes(fill = SuperFamily), color = "black", binwidth = 1000000,
+                 position = "dodge") +
+  facet_wrap(~Species, scales = "free_y") +
+  scale_x_continuous(
+    name = 'Insertion Time (MYA)',
+    breaks = seq(0, 50000000, 10000000),
+    labels = seq(0,50,10)
+  ) +
+  theme_classic()+
+  theme(legend.position = c(0.9,0.8))
